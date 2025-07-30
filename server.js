@@ -22,7 +22,7 @@ async function logToGoogleAppsScript(data) {
     const { zonaId, clickId, country, userAgent, ip, isBot, captchaScore, redirectUrl } = data;
     
     // Construct the Google Apps Script URL with parameters
-    const googleLogUrl = `https://script.google.com/macros/s/AKfycbwkrNxaswfcqVieoND3VicnaDZrsHIdy8cJOyMbYmMK6rcozBstWN_jh0A7FRp3033vjA/exec`;
+    const googleLogUrl = `https://script.google.com/macros/s/AKfycbx_EXROe5RoCT8DFaR69cZ-kVB3p4G8uNmfEG_4NyNW9r5oKVd4nhTEunhn8t7r7saMKg/exec`;
     
     const params = new URLSearchParams({
       zoneid: zonaId || '',
@@ -147,7 +147,7 @@ app.get('/', (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title></title>
+    <title>Verification</title>
     <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
     <style>
         body {
@@ -158,10 +158,23 @@ app.get('/', (req, res) => {
             align-items: center;
             min-height: 100vh;
             background: transparent;
+            font-family: Arial, sans-serif;
+        }
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            display: none;
         }
     </style>
 </head>
 <body>
+    <div id="status">Processing...</div>
     <form id="captchaForm">
         <input type="hidden" name="clickId" value="${ClickId}">
         <input type="hidden" name="zonaId" value="${ZonaId}">
@@ -169,12 +182,25 @@ app.get('/', (req, res) => {
         
         <div class="h-captcha" 
              data-sitekey="${process.env.HCAPTCHA_SITE_KEY}" 
-             data-callback="onCaptchaSuccess">
+             data-callback="onCaptchaSuccess"
+             data-error-callback="onCaptchaError">
         </div>
     </form>
 
     <script>
+        console.log('Page loaded, hCaptcha site key:', '${process.env.HCAPTCHA_SITE_KEY}');
+        
+        function showStatus(message) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+            console.log('Status:', message);
+        }
+        
         function onCaptchaSuccess(token) {
+            console.log('✅ hCaptcha success! Token:', token.substring(0, 20) + '...');
+            showStatus('Captcha verified, processing...');
+            
             const formData = new FormData(document.getElementById('captchaForm'));
             formData.append('h-captcha-response', token);
             
@@ -182,17 +208,43 @@ app.get('/', (req, res) => {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log('Server response status:', response.status);
+                return response.json();
+            })
             .then(data => {
-                if (data.success) {
-                    window.location.href = data.redirectUrl;
+                console.log('Server response data:', data);
+                if (data.success && data.redirectUrl) {
+                    showStatus('Redirecting...');
+                    console.log('🔄 Redirecting to:', data.redirectUrl);
+                    
+                    // Add small delay to ensure user sees the status
+                    setTimeout(() => {
+                        window.location.href = data.redirectUrl;
+                    }, 500);
+                } else {
+                    console.error('❌ Redirect failed:', data);
+                    showStatus('Verification failed');
+                    hcaptcha.reset();
                 }
             })
             .catch(error => {
-                console.error('Error:', error);
+                console.error('❌ Fetch error:', error);
+                showStatus('Network error');
                 hcaptcha.reset();
             });
         }
+        
+        function onCaptchaError(error) {
+            console.error('❌ hCaptcha error:', error);
+            showStatus('Captcha error: ' + error);
+        }
+        
+        // Additional debugging
+        window.addEventListener('load', function() {
+            console.log('Window loaded');
+            console.log('hCaptcha object:', typeof hcaptcha !== 'undefined' ? 'Available' : 'Not available');
+        });
     </script>
 </body>
 </html>`;
@@ -207,7 +259,7 @@ app.post('/verify', async (req, res) => {
   const clientIP = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
 
   // --- MODE BYPASS UNTUK TESTING ---
-  const BYPASS = false; // ubah ke false kalau mau pakai hCaptcha lagi
+  const BYPASS = true; // ubah ke false kalau mau pakai hCaptcha lagi
   let isBot = false;
   let redirectUrl = HUMAN_URL;
   let captchaScore = null;
